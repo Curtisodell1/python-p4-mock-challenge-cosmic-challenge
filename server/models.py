@@ -24,11 +24,10 @@ class Planet(db.Model, SerializerMixin):
     name = db.Column(db.String)
     distance_from_earth = db.Column(db.Integer)
     nearest_star = db.Column(db.String)
-
     # Add relationship
-
+    missions = db.relationship("Mission", backref="planets", cascade="all, delete-orphan")
     # Add serialization rules
-
+    serialize_rules = ("-missions.planets",)
 
 class Scientist(db.Model, SerializerMixin):
     __tablename__ = 'scientists'
@@ -36,12 +35,36 @@ class Scientist(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String)
     field_of_study = db.Column(db.String)
-
     # Add relationship
-
+    missions = db.relationship("Mission", backref="scientists", cascade="all, delete-orphan")
     # Add serialization rules
-
+    serialize_rules = ("-missions.scientists",)
     # Add validation
+    @validates("name", "field_of_study")
+    def validate_name(self, key, prop):
+        if key == "name":
+            if not prop or len(prop) < 1:
+                raise ValueError("must have a prop")
+        if key == "field_of_study":
+            if not prop or len(prop) < 1:
+                raise ValueError("must have a prop")
+        return prop
+    
+    validation_errors = []
+
+    def to_scientist_dict(self):
+        scientist = {
+            "id": self.id,
+            "name": self.name,
+            "field_of_study": self.field_of_study,
+            "missions": [mission.to_dict() for mission in Mission.query.filter(self.id == Mission.scientist_id)]
+            }
+        return scientist
+    
+    
+        # missions will be an array with each mission entry as a dict entry
+        # we'll use scientist id that matches within missions to return a list of missions for that scientist
+
 
 
 class Mission(db.Model, SerializerMixin):
@@ -51,10 +74,26 @@ class Mission(db.Model, SerializerMixin):
     name = db.Column(db.String)
 
     # Add relationships
-
+    planet_id = db.Column(db.Integer, db.ForeignKey('planets.id'))
+    scientist_id = db.Column(db.Integer, db.ForeignKey('scientists.id'))
     # Add serialization rules
-
+    serialize_rules = ("-scientists.missions", "-planets.missions")
+    # mission is the joiner model. Recursive loop happens on joiner model
+    # mission joins a scientist and a planet. 
+    # Whenever we have a has many model the serialize_rule is going to be the joiner and self
     # Add validation
+    @validates("name", "scientist_id", "planet_id")
+    def validate_name(self, key, prop):
+        if key == "name":
+            if not prop or len(prop) < 1:
+                raise ValueError("must have a name")
+        if key == "scientist_id":
+            if not prop:
+                raise ValueError("must have a scientist id")
+        if key == "planet_id":
+            if not prop:
+                raise ValueError("must have a planet id")
+        return prop
 
 
 # add any models you may need.
